@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>개인정보 수호대 퀴즈!</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', sans-serif; /* 귀여운 폰트 적용 */
+            background-color: #f0f9ff;
+            overflow-x: hidden;
+        }
+        .card-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .btn-press:active {
+            transform: scale(0.95);
+        }
+        .emoji-bounce {
+            animation: bounce 2s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-10%); }
+            50% { transform: translateY(10%); }
+        }
+        /* 컨페티 캔버스 스타일 */
+        #confetti-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-blue-50 selection:bg-yellow-200">
+
+    <canvas id="confetti-canvas"></canvas>
+
+    <div id="game-container" class="w-full max-w-md p-6 mx-auto bg-white border-4 border-blue-300 rounded-3xl card-shadow relative z-10">
+        
+        <!-- 1. 시작 화면 -->
+        <div id="start-screen" class="text-center py-10">
+            <div class="text-6xl mb-4 emoji-bounce">🛡️</div>
+            <h1 class="text-4xl text-blue-600 mb-2">개인정보 수호대</h1>
+            <p class="text-gray-500 text-lg mb-8">소중한 정보를 지켜라!</p>
+            
+            <div class="bg-yellow-100 p-4 rounded-xl mb-8 text-left">
+                <p class="text-gray-700 text-lg mb-2">📢 <strong>게임 방법</strong></p>
+                <ul class="list-disc list-inside text-gray-600 text-base">
+                    <li>총 5문제가 나와요.</li>
+                    <li>나만의 비밀 정보면 <strong>개인정보</strong>!</li>
+                    <li>누구나 아는 정보면 <strong>일반정보</strong>!</li>
+                </ul>
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-blue-500 hover:bg-blue-600 text-white text-2xl py-4 rounded-2xl btn-press transition-colors shadow-lg border-b-4 border-blue-700">
+                게임 시작하기 🚀
+            </button>
+        </div>
+
+        <!-- 2. 퀴즈 화면 -->
+        <div id="quiz-screen" class="hidden text-center py-4 fade-in">
+            <div class="flex justify-between items-center mb-6 px-2">
+                <span class="text-blue-500 text-xl">문제 <span id="q-current">1</span> / 5</span>
+                <span class="text-yellow-500 text-xl">점수 <span id="score">0</span>점</span>
+            </div>
+
+            <div class="bg-gray-100 rounded-2xl p-8 mb-8 h-48 flex flex-col items-center justify-center border-2 border-gray-200">
+                <div id="q-emoji" class="text-5xl mb-4">🏠</div>
+                <h2 id="q-text" class="text-3xl text-gray-800 break-keep">우리 집 주소</h2>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <button onclick="checkAnswer('personal')" class="bg-red-400 hover:bg-red-500 text-white py-4 rounded-xl text-xl btn-press shadow-md border-b-4 border-red-600 transition-colors flex flex-col items-center justify-center h-32">
+                    <span class="text-3xl mb-1">🔒</span>
+                    개인정보
+                </button>
+                <button onclick="checkAnswer('general')" class="bg-green-400 hover:bg-green-500 text-white py-4 rounded-xl text-xl btn-press shadow-md border-b-4 border-green-600 transition-colors flex flex-col items-center justify-center h-32">
+                    <span class="text-3xl mb-1">📢</span>
+                    일반정보
+                </button>
+            </div>
+
+            <!-- 정답/오답 피드백 영역 -->
+            <div id="feedback" class="hidden mt-4 p-4 rounded-xl bg-blue-50 border-2 border-blue-100">
+                <h3 id="feedback-title" class="text-2xl font-bold mb-2">정답입니다! 🎉</h3>
+                <p id="feedback-desc" class="text-gray-600 text-lg">다른 사람에게 함부로 알려주면 안 돼요.</p>
+                <button onclick="nextQuestion()" class="mt-4 bg-blue-500 text-white px-6 py-2 rounded-lg text-lg hover:bg-blue-600 transition">다음 문제 ➡️</button>
+            </div>
+        </div>
+
+        <!-- 3. 결과 화면 -->
+        <div id="result-screen" class="hidden text-center py-8 fade-in">
+            <div id="result-emoji" class="text-6xl mb-4 emoji-bounce">🏆</div>
+            <h2 id="result-title" class="text-4xl text-blue-600 mb-4">참 잘했어요!</h2>
+            
+            <div class="bg-white border-2 border-yellow-300 rounded-2xl p-6 mb-8 shadow-inner">
+                <p class="text-gray-500 mb-2">나의 점수는?</p>
+                <p class="text-5xl font-bold text-yellow-500 mb-2"><span id="final-score">100</span>점</p>
+                <p id="result-message" class="text-gray-600 text-lg">개인정보 박사님이시군요!</p>
+            </div>
+
+            <div id="perfect-reward" class="hidden mb-6">
+                <svg class="w-32 h-32 mx-auto text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.633 1.24l-1.928.55a1 1 0 01-1.151-.384l-2.028-3.007a.998.998 0 01-.193-.585v-5.8zM8 4a1 1 0 00-1 1v1.323l-3.954 1.582-1.599-.8a1 1 0 00-.894 1.79l1.233.616-1.738 5.42a1 1 0 00.285 1.05A3.989 3.989 0 004 15c.95 0 1.832-.365 2.667-1.019a1 1 0 00.633 1.24l1.928.55a1 1 0 001.151-.384l2.028-3.007a.998.998 0 00.193-.585V5a1 1 0 00-1-1H8z" clip-rule="evenodd"/>
+                </svg>
+                <p class="text-yellow-600 font-bold mt-2">최고의 수호대 뱃지 획득!</p>
+            </div>
+
+            <button onclick="location.reload()" class="w-full bg-blue-500 hover:bg-blue-600 text-white text-2xl py-3 rounded-2xl btn-press shadow-lg border-b-4 border-blue-700 transition-colors">
+                다시 하기 🔄
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 퀴즈 데이터 (문제 5개)
+        const quizData = [
+            {
+                text: "우리 집 현관 비밀번호",
+                emoji: "🔢",
+                type: "personal",
+                desc: "비밀번호를 다른 사람이 알면 우리 집에 들어올 수 있어요! 절대 알려주면 안 돼요."
+            },
+            {
+                text: "오늘의 날씨 (맑음)",
+                emoji: "☀️",
+                type: "general",
+                desc: "날씨는 누구나 뉴스나 하늘을 보면 알 수 있는 정보예요."
+            },
+            {
+                text: "내 이름과 얼굴 사진",
+                emoji: "📸",
+                type: "personal",
+                desc: "사진과 이름은 '나'를 알아볼 수 있는 아주 중요한 개인정보예요."
+            },
+            {
+                text: "세종대왕님 이야기",
+                emoji: "👑",
+                type: "general",
+                desc: "위인전이나 책에 나오는 옛날이야기는 누구나 알 수 있는 일반정보예요."
+            },
+            {
+                text: "엄마, 아빠 전화번호",
+                emoji: "📱",
+                type: "personal",
+                desc: "가족의 전화번호는 나쁜 사람이 알면 장난 전화를 걸 수도 있어요."
+            }
+        ];
+
+        let currentQ = 0;
+        let score = 0;
+        let isAnswering = false;
+
+        // 화면 요소 가져오기
+        const startScreen = document.getElementById('start-screen');
+        const quizScreen = document.getElementById('quiz-screen');
+        const resultScreen = document.getElementById('result-screen');
+        
+        const qCurrentEl = document.getElementById('q-current');
+        const scoreEl = document.getElementById('score');
+        const qTextEl = document.getElementById('q-text');
+        const qEmojiEl = document.getElementById('q-emoji');
+        
+        const feedbackEl = document.getElementById('feedback');
+        const feedbackTitle = document.getElementById('feedback-title');
+        const feedbackDesc = document.getElementById('feedback-desc');
+
+        // 게임 시작
+        function startGame() {
+            startScreen.classList.add('hidden');
+            quizScreen.classList.remove('hidden');
+            loadQuestion();
+        }
+
+        // 문제 불러오기
+        function loadQuestion() {
+            isAnswering = true;
+            feedbackEl.classList.add('hidden');
+            
+            const data = quizData[currentQ];
+            qCurrentEl.innerText = currentQ + 1;
+            qTextEl.innerText = data.text;
+            qEmojiEl.innerText = data.emoji;
+        }
+
+        // 정답 확인
+        function checkAnswer(answerType) {
+            if (!isAnswering) return;
+            isAnswering = false;
+
+            const data = quizData[currentQ];
+            feedbackEl.classList.remove('hidden');
+
+            if (data.type === answerType) {
+                // 정답
+                score += 20; // 100점 만점 기준 1문제당 20점
+                scoreEl.innerText = score;
+                feedbackTitle.innerText = "정답입니다! ⭕";
+                feedbackTitle.className = "text-2xl font-bold mb-2 text-green-600";
+            } else {
+                // 오답
+                feedbackTitle.innerText = "아까워요! ❌";
+                feedbackTitle.className = "text-2xl font-bold mb-2 text-red-500";
+            }
+            feedbackDesc.innerText = data.desc;
+        }
+
+        // 다음 문제로
+        function nextQuestion() {
+            currentQ++;
+            if (currentQ < quizData.length) {
+                loadQuestion();
+            } else {
+                showResult();
+            }
+        }
+
+        // 결과 보여주기
+        function showResult() {
+            quizScreen.classList.add('hidden');
+            resultScreen.classList.remove('hidden');
+            
+            const finalScoreEl = document.getElementById('final-score');
+            const resultMsg = document.getElementById('result-message');
+            const resultEmoji = document.getElementById('result-emoji');
+            
+            finalScoreEl.innerText = score;
+
+            if (score === 100) {
+                resultEmoji.innerText = "🎉";
+                document.getElementById('result-title').innerText = "완벽해요!";
+                resultMsg.innerText = "개인정보 수호대장으로 임명합니다!";
+                document.getElementById('perfect-reward').classList.remove('hidden');
+                startConfetti(); // 100점일 때만 컨페티 발사!
+            } else if (score >= 60) {
+                resultEmoji.innerText = "👍";
+                document.getElementById('result-title').innerText = "잘했어요!";
+                resultMsg.innerText = "조금만 더 공부하면 완벽할 거예요!";
+            } else {
+                resultEmoji.innerText = "💪";
+                document.getElementById('result-title').innerText = "힘내세요!";
+                resultMsg.innerText = "다시 한번 도전해서 100점을 받아봐요!";
+            }
+        }
+
+        // --- 컨페티(꽃가루) 효과 로직 ---
+        function startConfetti() {
+            const canvas = document.getElementById('confetti-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const pieces = [];
+            const numberOfPieces = 150;
+            const colors = ['#f00', '#0f0', '#00f', '#ff0', '#0ff', '#f0f'];
+
+            for (let i = 0; i < numberOfPieces; i++) {
+                pieces.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height - canvas.height,
+                    rotation: Math.random() * 360,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    size: Math.random() * 10 + 5,
+                    speed: Math.random() * 3 + 2,
+                    drift: Math.random() * 2 - 1
+                });
+            }
+
+            function update() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                pieces.forEach(p => {
+                    ctx.save();
+                    ctx.fillStyle = p.color;
+                    ctx.translate(p.x + p.size / 2, p.y + p.size / 2);
+                    ctx.rotate(p.rotation * Math.PI / 180);
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                    ctx.restore();
+
+                    p.y += p.speed;
+                    p.x += p.drift;
+                    p.rotation += p.speed;
+
+                    if (p.y > canvas.height) {
+                        p.y = -20;
+                        p.x = Math.random() * canvas.width;
+                    }
+                });
+                
+                requestAnimationFrame(update);
+            }
+            update();
+        }
+
+        // 창 크기 조절 시 캔버스 리사이징
+        window.addEventListener('resize', () => {
+            const canvas = document.getElementById('confetti-canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+    </script>
+</body>
+</html>
