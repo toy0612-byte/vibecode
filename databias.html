@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>야옹이 탐정 AI: 데이터 편향 학습</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', sans-serif;
+            background-color: #FFF7ED; /* 따뜻한 오렌지 배경 */
+            user-select: none;
+        }
+        .emoji-big {
+            font-size: 8rem;
+            line-height: 1;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+        }
+        .btn-game {
+            transition: all 0.1s;
+        }
+        .btn-game:active {
+            transform: scale(0.95);
+        }
+        .robot-bounce {
+            animation: bounce 2s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* AI 생각 말풍선 */
+        .thought-bubble {
+            position: relative;
+            background: #fff;
+            border-radius: .4em;
+        }
+        .thought-bubble:after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border: 10px solid transparent;
+            border-top-color: #fff;
+            border-bottom: 0;
+            margin-left: -10px;
+            margin-bottom: -10px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- 게임 컨테이너 -->
+    <div class="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border-4 border-orange-300 relative">
+        
+        <!-- 상단 헤더: 로봇 상태 -->
+        <div class="bg-orange-100 p-6 flex items-center justify-between border-b-2 border-orange-200">
+            <div class="flex items-center gap-4">
+                <div class="text-5xl robot-bounce">🤖</div>
+                <div>
+                    <h2 class="text-2xl text-orange-600">야옹이 탐정 AI</h2>
+                    <p id="ai-status" class="text-sm text-gray-500">상태: 초기화 됨</p>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="text-xs text-gray-500">학습 진행도</p>
+                <div class="w-24 h-4 bg-white rounded-full border border-gray-300 overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-green-500 w-0 transition-all duration-300"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메인 콘텐츠 영역 -->
+        <div id="game-area" class="p-8 text-center min-h-[400px] flex flex-col items-center justify-center">
+            
+            <!-- 1. 인트로 화면 -->
+            <div id="screen-intro" class="fade-in">
+                <h1 class="text-3xl text-gray-800 mb-4">AI를 훈련시켜주세요!</h1>
+                <p class="text-lg text-gray-600 mb-6 break-keep">
+                    이 로봇은 <strong>'고양이'</strong>가 무엇인지 모릅니다.<br>
+                    여러분이 데이터를 보여주고 고양이인지 아닌지 가르쳐주세요.
+                </p>
+                <button onclick="startTraining('biased')" class="bg-orange-500 hover:bg-orange-600 text-white text-2xl py-3 px-10 rounded-2xl btn-game shadow-lg">
+                    훈련 시작하기 ▶️
+                </button>
+            </div>
+
+            <!-- 2. 학습 화면 (트레이닝) -->
+            <div id="screen-train" class="hidden fade-in w-full">
+                <p class="text-xl text-gray-500 mb-2">이 사진은 고양이인가요?</p>
+                
+                <div class="bg-gray-50 rounded-2xl py-10 mb-6 border-2 border-dashed border-gray-300">
+                    <div id="train-emoji" class="emoji-big">🐈</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="trainAI(true)" class="bg-blue-100 hover:bg-blue-200 border-2 border-blue-400 text-blue-700 text-xl py-4 rounded-xl btn-game">
+                        🙆‍♂️ 네! (고양이)
+                    </button>
+                    <button onclick="trainAI(false)" class="bg-red-100 hover:bg-red-200 border-2 border-red-400 text-red-700 text-xl py-4 rounded-xl btn-game">
+                        🙅‍♀️ 아니요!
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3. 테스트/결과 화면 (AI의 판단) -->
+            <div id="screen-test" class="hidden fade-in w-full">
+                <div class="mb-6">
+                    <p class="text-gray-500 mb-2">AI가 배운 내용을 바탕으로 판단 중...</p>
+                    <div class="thought-bubble bg-gray-100 p-4 mb-4 shadow-sm border border-gray-200">
+                        <p id="ai-thought" class="text-xl text-purple-600 font-bold">음... 이건...</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-full w-40 h-40 flex items-center justify-center mx-auto mb-6 border-4 border-gray-200 shadow-inner">
+                    <div id="test-emoji" class="emoji-big">🐈‍⬛</div>
+                </div>
+
+                <div id="test-result-msg" class="text-2xl font-bold mb-6 text-gray-800"></div>
+
+                <button id="btn-next-step" class="hidden bg-green-500 text-white py-3 px-8 rounded-xl text-xl shadow-md btn-game hover:bg-green-600">
+                    다음으로 넘어가기 ➡️
+                </button>
+            </div>
+
+            <!-- 4. 편향 설명 및 재학습 제안 -->
+            <div id="screen-bias-alert" class="hidden fade-in">
+                <div class="text-6xl mb-4">😱</div>
+                <h2 class="text-3xl text-red-500 mb-4">문제가 생겼어요!</h2>
+                <div class="bg-red-50 p-4 rounded-xl border border-red-200 text-left mb-6">
+                    <p class="text-lg text-gray-700 mb-2"><strong>AI의 변명:</strong></p>
+                    <p class="text-gray-600 text-base italic">
+                        "아까 훈련할 때 <strong>주황색 고양이(🐈)</strong>만 보여줬잖아요!<br>
+                        그래서 저는 <strong>'주황색'이어야만 고양이</strong>라고 배웠어요.<br>
+                        검은색, 흰색은 본 적이 없어서 고양이가 아니라고 생각했어요."
+                    </p>
+                </div>
+                <p class="text-gray-500 text-sm mb-6">이것이 바로 <strong>데이터 편향(Bias)</strong>입니다.</p>
+                <button onclick="startTraining('diverse')" class="bg-purple-500 hover:bg-purple-600 text-white text-xl py-3 px-8 rounded-2xl btn-game shadow-lg w-full">
+                    다양한 고양이로 다시 가르치기! 🔄
+                </button>
+            </div>
+
+            <!-- 5. 최종 성공 화면 -->
+            <div id="screen-success" class="hidden fade-in">
+                <div class="text-6xl mb-4">🎉</div>
+                <h2 class="text-3xl text-green-600 mb-4">편향 탈출 성공!</h2>
+                <p class="text-lg text-gray-600 mb-8">
+                    이제 AI는 색깔에 상관없이<br>모든 고양이를 알아볼 수 있게 되었어요.<br>
+                    <strong>"데이터는 다양할수록 좋아요!"</strong>
+                </p>
+                <div class="flex justify-center gap-2 mb-8 text-4xl">
+                    <span>🐈</span><span>🐈‍⬛</span><span>🐱</span>
+                </div>
+                <button onclick="location.reload()" class="bg-gray-500 hover:bg-gray-600 text-white py-3 px-8 rounded-xl text-lg btn-game">
+                    처음부터 다시 하기
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- 데이터셋 정의 ---
+        // 1. 편향된 데이터셋 (주황 고양이만 있음)
+        const biasedDataset = [
+            { emoji: "🐈", isCat: true },
+            { emoji: "🐕", isCat: false },
+            { emoji: "🐈", isCat: true },
+            { emoji: "🐩", isCat: false },
+            { emoji: "🐈", isCat: true },
+            { emoji: "🦎", isCat: false }
+        ];
+
+        // 2. 다양한 데이터셋 (검은 고양이, 흰 고양이 포함)
+        const diverseDataset = [
+            { emoji: "🐈‍⬛", isCat: true },
+            { emoji: "🐶", isCat: false },
+            { emoji: "🐱", isCat: true }, // 흰 고양이 얼굴
+            { emoji: "🐰", isCat: false },
+            { emoji: "🐈", isCat: true }
+        ];
+
+        // 3. 테스트용 문제 (편향 확인용)
+        const testCaseFailure = { emoji: "🐈‍⬛", isCat: true, color: "black" }; 
+        const testCaseSuccess = { emoji: "🐈‍⬛", isCat: true, color: "black" };
+
+        // --- 상태 변수 ---
+        let currentPhase = 'intro'; // intro, training, testing, bias_alert, retraining, success
+        let trainIndex = 0;
+        let currentDataset = [];
+        let aiBrain = {
+            hasSeenBlackCat: false,
+            hasSeenWhiteCat: false
+        };
+
+        // --- DOM 요소 ---
+        const aiStatus = document.getElementById('ai-status');
+        const progressBar = document.getElementById('progress-bar');
+        const screens = {
+            intro: document.getElementById('screen-intro'),
+            train: document.getElementById('screen-train'),
+            test: document.getElementById('screen-test'),
+            biasAlert: document.getElementById('screen-bias-alert'),
+            success: document.getElementById('screen-success')
+        };
+        const trainEmoji = document.getElementById('train-emoji');
+        const aiThought = document.getElementById('ai-thought');
+        const testEmoji = document.getElementById('test-emoji');
+        const testResultMsg = document.getElementById('test-result-msg');
+        const btnNextStep = document.getElementById('btn-next-step');
+
+        // --- 화면 전환 함수 ---
+        function showScreen(screenName) {
+            Object.values(screens).forEach(el => el.classList.add('hidden'));
+            screens[screenName].classList.remove('hidden');
+        }
+
+        // --- 1. 훈련 시작 ---
+        function startTraining(type) {
+            trainIndex = 0;
+            if (type === 'biased') {
+                currentPhase = 'training_biased';
+                currentDataset = biasedDataset;
+                aiStatus.innerText = "상태: 주황색 고양이만 배우는 중...";
+            } else {
+                currentPhase = 'training_diverse';
+                currentDataset = diverseDataset;
+                aiStatus.innerText = "상태: 다양한 고양이를 배우는 중...";
+                // 재학습 시에는 검은 고양이를 보게 됨
+                aiBrain.hasSeenBlackCat = true; 
+            }
+            showScreen('train');
+            updateTrainCard();
+        }
+
+        // --- 2. 훈련 카드 업데이트 ---
+        function updateTrainCard() {
+            if (trainIndex >= currentDataset.length) {
+                // 훈련 종료 -> 테스트로 이동
+                setTimeout(startTest, 500);
+                return;
+            }
+            const data = currentDataset[trainIndex];
+            trainEmoji.innerText = data.emoji;
+            
+            // 진행바 업데이트
+            const progress = ((trainIndex) / currentDataset.length) * 100;
+            progressBar.style.width = `${progress}%`;
+        }
+
+        // --- 3. 사용자 입력 (O/X 버튼) ---
+        function trainAI(userChoice) {
+            // 여기서는 사용자가 무조건 맞게 입력한다고 가정하거나, 
+            // 정답을 체크해줄 수도 있지만, 흐름상 그냥 넘어갑니다.
+            // 교육적 효과를 위해 맞았는지 틀렸는지 시각적 피드백 살짝 줌
+            
+            const currentData = currentDataset[trainIndex];
+            // 정답 여부 체크 (UX용)
+            if (userChoice !== currentData.isCat) {
+                alert("어라? 다시 잘 보세요! 고양이인가요?");
+                return;
+            }
+
+            trainIndex++;
+            updateTrainCard();
+        }
+
+        // --- 4. 테스트 시작 (AI의 판단 시뮬레이션) ---
+        function startTest() {
+            progressBar.style.width = "100%";
+            showScreen('test');
+
+            if (currentPhase === 'training_biased') {
+                // 편향된 학습 후 -> 검은 고양이 테스트
+                runTestSimulation(testCaseFailure, false); // 실패 시나리오
+            } else {
+                // 재학습 후 -> 검은 고양이 테스트
+                runTestSimulation(testCaseSuccess, true); // 성공 시나리오
+            }
+        }
+
+        function runTestSimulation(testData, isSuccessScenario) {
+            testEmoji.innerText = testData.emoji;
+            testResultMsg.innerText = "";
+            btnNextStep.classList.add('hidden');
+            aiThought.innerText = "학습한 내용이랑 비교하는 중...";
+            aiStatus.innerText = "상태: 판단 중...";
+
+            setTimeout(() => {
+                if (isSuccessScenario) {
+                    // 성공 로직
+                    aiThought.innerText = "아! 이건 색깔은 다르지만 고양이야!";
+                    testResultMsg.innerHTML = "<span class='text-green-600'>정답! 이것은 고양이입니다.</span>";
+                    btnNextStep.innerText = "결과 보기 🎉";
+                    btnNextStep.onclick = () => showScreen('success');
+                } else {
+                    // 실패 로직 (편향 발생)
+                    aiThought.innerText = "어? 주황색이 아니네? 이건 고양이가 아니야!";
+                    testResultMsg.innerHTML = "<span class='text-red-500'>땡! AI는 이것을 고양이가 아니라고 판단했습니다.</span>";
+                    btnNextStep.innerText = "왜 틀렸을까? 🤔";
+                    btnNextStep.onclick = () => showScreen('biasAlert');
+                }
+                btnNextStep.classList.remove('hidden');
+            }, 2000);
+        }
+
+    </script>
+</body>
+</html>
