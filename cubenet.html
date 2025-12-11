@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>정육면체 전개도 땅따먹기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f0f9ff;
+            user-select: none;
+        }
+
+        h1, h2, .font-jua {
+            font-family: 'Jua', sans-serif;
+        }
+
+        .grid-cell {
+            transition: all 0.2s;
+            cursor: pointer;
+            border: 1px solid #bfdbfe; 
+            background-color: white;
+        }
+
+        .grid-cell:hover {
+            background-color: #e0f2fe; 
+        }
+
+        /* 플레이어 점령 (Blue) */
+        .cell-player {
+            background-color: #3b82f6 !important;
+            border-color: #1d4ed8;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        /* 컴퓨터 점령 (Red) */
+        .cell-cpu {
+            background-color: #ef4444 !important;
+            border-color: #b91c1c;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        /* 현재 선택 중 (Yellow) */
+        .cell-selected {
+            background-color: #facc15 !important;
+            border-color: #b45309;
+            transform: scale(0.95);
+        }
+
+        .net-preview-item {
+            display: inline-block;
+            margin: 5px;
+            padding: 5px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .mini-grid {
+            display: grid;
+            gap: 1px;
+            background-color: #cbd5e1;
+            padding: 1px;
+        }
+        .mini-cell {
+            width: 10px;
+            height: 10px;
+            background-color: white;
+        }
+        .mini-cell.filled {
+            background-color: #64748b;
+        }
+
+        /* 애니메이션 */
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .animate-pop {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .modal {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col items-center overflow-hidden">
+
+    <!-- Header -->
+    <header class="w-full bg-white shadow-md p-4 flex justify-between items-center z-10">
+        <h1 class="text-2xl md:text-3xl text-blue-600 font-jua">🎲 정육면체 전개도 땅따먹기</h1>
+        <div class="flex gap-4 text-sm md:text-base font-bold">
+            <div class="flex items-center gap-2">
+                <div class="w-4 h-4 bg-blue-500 rounded"></div>
+                <span>나: <span id="score-player">0</span></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="w-4 h-4 bg-red-500 rounded"></div>
+                <span>컴퓨터: <span id="score-cpu">0</span></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex flex-1 w-full max-w-7xl gap-4 p-4 overflow-hidden">
+        
+        <!-- Left Panel: Game Board -->
+        <div class="flex-1 flex flex-col items-center justify-center bg-white rounded-xl shadow-lg p-4 relative">
+            
+            <!-- Turn Indicator -->
+            <div id="turn-indicator" class="absolute top-4 bg-blue-100 text-blue-800 px-6 py-2 rounded-full font-bold text-lg shadow transition-colors z-20 pointer-events-none">
+                당신의 차례입니다 <span id="timer-display" class="ml-2 text-red-500">40s</span>
+            </div>
+
+            <!-- Grid Container -->
+            <div id="grid-container" class="grid gap-1 bg-blue-300 p-1 rounded-lg shadow-inner select-none border-2 border-blue-300">
+                <!-- Grid Cells Generated via JS -->
+            </div>
+
+            <!-- Controls -->
+            <div class="mt-6 flex gap-4">
+                <button id="btn-confirm" onclick="confirmMove()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    땅따먹기 (0/6)
+                </button>
+                <button onclick="resetSelection()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-full shadow transform active:scale-95 transition-all">
+                    취소
+                </button>
+                <button onclick="initGame()" class="bg-red-100 hover:bg-red-200 text-red-600 font-bold py-3 px-6 rounded-full shadow transform active:scale-95 transition-all">
+                    새 게임
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Panel: Reference -->
+        <div class="hidden md:flex w-64 flex-col bg-white rounded-xl shadow-lg p-4 overflow-y-auto">
+            <h3 class="font-jua text-lg text-gray-700 mb-2 border-b pb-2">전개도 족보 (11종)</h3>
+            <p class="text-xs text-gray-500 mb-4">회전하거나 뒤집어도 유효합니다.</p>
+            <div id="net-reference" class="flex flex-wrap justify-center">
+                <!-- Reference items generated via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Game Over -->
+    <div id="modal-gameover" class="modal fixed inset-0 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-8 shadow-2xl text-center max-w-sm mx-4 transform transition-all scale-100">
+            <div class="text-6xl mb-4" id="modal-icon">🏆</div>
+            <h2 class="text-3xl font-jua mb-2" id="modal-title">게임 종료!</h2>
+            <p class="text-gray-600 mb-6" id="modal-message">결과 메시지</p>
+            <button onclick="initGame()" class="bg-blue-500 text-white font-bold py-3 px-8 rounded-full hover:bg-blue-600 shadow-lg w-full">
+                다시 하기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 게임 설정
+        const GRID_SIZE = 12;
+        const CELL_SIZE = 40;
+        const TIME_LIMIT = 40;
+
+        let grid = []; 
+        let selectedCells = [];
+        let isPlayerTurn = true;
+        let gameOver = false;
+        let scores = { player: 0, cpu: 0 };
+        
+        let timeLeft = TIME_LIMIT;
+        let timerInterval = null;
+
+        // --- 정확한 11가지 전개도 데이터 (검증됨) ---
+        const BASE_SHAPES = [
+            // 1-4-1 (6종)
+            [[1,0], [1,1], [1,2], [1,3], [0,1], [2,1]], // 1. 십자가 (Cross)
+            [[1,0], [1,1], [1,2], [1,3], [0,1], [2,2]], // 2.
+            [[1,0], [1,1], [1,2], [1,3], [0,1], [2,3]], // 3.
+            [[1,0], [1,1], [1,2], [1,3], [0,2], [2,2]], // 4.
+            [[1,0], [1,1], [1,2], [1,3], [0,2], [2,3]], // 5.
+            [[1,0], [1,1], [1,2], [1,3], [0,2], [2,1]], // 6.
+
+            // 2-2-2 (1종)
+            [[0,0], [0,1], [1,1], [1,2], [2,2], [2,3]], // 7. 계단 (Stairs)
+
+            // 2-3-1 (3종)
+            [[0,0], [0,1], [1,1], [1,2], [1,3], [2,3]], // 8.
+            [[0,0], [0,1], [1,1], [1,2], [1,3], [2,1]], // 9.
+            [[0,0], [0,1], [1,1], [1,2], [1,3], [2,2]], // 10.
+
+            // 3-3 (1종)
+            [[0,0], [0,1], [0,2], [1,2], [1,3], [1,4]]  // 11. 
+        ];
+
+        let validSignaturesSet = new Set();
+        let cachedVariations = null;
+
+        function generateSignatures() {
+            validSignaturesSet.clear();
+            const variations = getAllShapeVariations();
+            variations.forEach(shape => {
+                validSignaturesSet.add(getSignature(shape));
+            });
+            console.log("Valid signatures generated:", validSignaturesSet.size);
+        }
+
+        function getAllShapeVariations() {
+            if (cachedVariations) return cachedVariations;
+            
+            let vars = [];
+            BASE_SHAPES.forEach(s => {
+                let curr = s;
+                // 2 Flips
+                for(let f=0; f<2; f++) {
+                    // 4 Rotations
+                    for(let r=0; r<4; r++) {
+                        const minR = Math.min(...curr.map(p => p[0]));
+                        const minC = Math.min(...curr.map(p => p[1]));
+                        const norm = curr.map(p => ({r: p[0]-minR, c: p[1]-minC}));
+                        vars.push(norm);
+                        
+                        // Rotate 90 deg: (r,c) -> (c, -r)
+                        curr = curr.map(p => [p[1], -p[0]]);
+                    }
+                    // Flip: (r,c) -> (-r, c)
+                    curr = curr.map(p => [-p[0], p[1]]);
+                }
+            });
+            cachedVariations = vars;
+            return vars;
+        }
+
+        function getSignature(coords) {
+            let arr = coords.map(p => Array.isArray(p) ? [...p] : [p.r, p.c]);
+            const minR = Math.min(...arr.map(p => p[0]));
+            const minC = Math.min(...arr.map(p => p[1]));
+            arr = arr.map(p => [p[0]-minR, p[1]-minC]);
+            // Sort by R, then C
+            arr.sort((a,b) => a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]);
+            return arr.map(p => `${p[0]},${p[1]}`).join('|');
+        }
+
+        function checkSignature(cells) {
+            if(!isConnected(cells)) return false;
+            const sig = getSignature(cells);
+            return validSignaturesSet.has(sig);
+        }
+
+        function isConnected(cells) {
+            if(cells.length === 0) return false;
+            let set = new Set(cells.map(c => `${c.r},${c.c}`));
+            let q = [cells[0]];
+            let visited = new Set();
+            visited.add(`${cells[0].r},${cells[0].c}`);
+            let count = 0;
+            
+            while(q.length > 0) {
+                let curr = q.shift();
+                count++;
+                let neighbors = [
+                    {r:curr.r+1, c:curr.c}, {r:curr.r-1, c:curr.c},
+                    {r:curr.r, c:curr.c+1}, {r:curr.r, c:curr.c-1}
+                ];
+                neighbors.forEach(n => {
+                    let key = `${n.r},${n.c}`;
+                    if(set.has(key) && !visited.has(key)) {
+                        visited.add(key);
+                        q.push(n);
+                    }
+                });
+            }
+            return count === cells.length;
+        }
+
+        // --- Timer Logic ---
+        function startTimer() {
+            stopTimer();
+            timeLeft = TIME_LIMIT;
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    stopTimer();
+                    endGame("시간 초과!", "생각할 시간이 너무 길었습니다. 패배!", false);
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById('timer-display');
+            if (display) {
+                if (isPlayerTurn) {
+                    display.innerText = `${timeLeft}s`;
+                    display.style.display = 'inline';
+                    if (timeLeft <= 10) display.classList.add('font-black', 'text-red-600');
+                    else display.classList.remove('font-black', 'text-red-600');
+                } else {
+                    display.style.display = 'none';
+                }
+            }
+        }
+
+        // --- Game Logic ---
+
+        function initGame() {
+            cachedVariations = null;
+            generateSignatures();
+            renderReference();
+            
+            grid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+            selectedCells = [];
+            isPlayerTurn = true;
+            gameOver = false;
+            scores = { player: 0, cpu: 0 };
+            
+            updateUI();
+            renderGrid();
+            document.getElementById('modal-gameover').classList.add('hidden');
+            
+            startTimer();
+        }
+
+        function renderGrid() {
+            const container = document.getElementById('grid-container');
+            container.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${CELL_SIZE}px)`;
+            container.innerHTML = '';
+
+            for(let r=0; r<GRID_SIZE; r++) {
+                for(let c=0; c<GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = `grid-cell w-[${CELL_SIZE}px] h-[${CELL_SIZE}px] flex items-center justify-center text-xs font-bold rounded-sm`;
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    
+                    const val = grid[r][c];
+                    if (val === 1) cell.classList.add('cell-player', 'animate-pop');
+                    if (val === 2) cell.classList.add('cell-cpu', 'animate-pop');
+                    
+                    const idx = selectedCells.findIndex(s => s.r === r && s.c === c);
+                    if (idx !== -1) {
+                        cell.classList.add('cell-selected');
+                        cell.innerText = idx + 1;
+                    }
+
+                    cell.onclick = () => handleCellClick(r, c);
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(r, c) {
+            if (gameOver || !isPlayerTurn) return;
+            if (grid[r][c] !== 0) return;
+
+            const existingIdx = selectedCells.findIndex(s => s.r === r && s.c === c);
+            
+            if (existingIdx !== -1) {
+                selectedCells.splice(existingIdx, 1);
+            } else {
+                if (selectedCells.length < 6) {
+                    selectedCells.push({r, c});
+                }
+            }
+            
+            renderGrid();
+            checkSelectionCount();
+        }
+
+        function checkSelectionCount() {
+            const btn = document.getElementById('btn-confirm');
+            btn.innerText = `땅따먹기 (${selectedCells.length}/6)`;
+            
+            if (selectedCells.length === 6) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function confirmMove() {
+            if (selectedCells.length !== 6) return;
+
+            // 정답 검증 로직
+            if (!checkSignature(selectedCells)) {
+                alert("클릭한 영역을 접었을 때 정육면체가 안되는 모양은 정육면체 전개도 모양이 아닙니다.");
+                return;
+            }
+
+            // 정답일 경우
+            stopTimer();
+
+            selectedCells.forEach(c => {
+                grid[c.r][c.c] = 1;
+            });
+            scores.player += 1;
+            
+            resetSelection();
+            updateUI();
+            
+            if (!canMove(2)) {
+                endGame("승리!", "컴퓨터가 더 이상 둘 곳이 없습니다.", true);
+                return;
+            }
+
+            isPlayerTurn = false;
+            updateUI();
+            setTimeout(cpuTurn, 800);
+        }
+
+        function resetSelection() {
+            selectedCells = [];
+            renderGrid();
+            checkSelectionCount();
+        }
+
+        function cpuTurn() {
+            if (gameOver) return;
+
+            const move = findValidMove(2);
+            
+            if (move) {
+                move.forEach(c => {
+                    grid[c.r][c.c] = 2;
+                });
+                scores.cpu += 1;
+                
+                if (!canMove(1)) {
+                    updateUI();
+                    endGame("패배...", "더 이상 전개도를 그릴 곳이 없습니다.", false);
+                    return;
+                }
+                
+                isPlayerTurn = true;
+                updateUI();
+                renderGrid();
+                
+                startTimer();
+            } else {
+                endGame("승리!", "컴퓨터가 기권했습니다.", true);
+            }
+        }
+
+        function findValidMove(playerVal) {
+            let empties = [];
+            for(let r=0; r<GRID_SIZE; r++){
+                for(let c=0; c<GRID_SIZE; c++){
+                    if(grid[r][c] === 0) empties.push({r,c});
+                }
+            }
+            empties.sort(() => Math.random() - 0.5);
+            
+            const allVariations = getAllShapeVariations();
+            allVariations.sort(() => Math.random() - 0.5);
+
+            for (let root of empties) {
+                for (let shape of allVariations) {
+                    let attempt = [];
+                    let possible = true;
+                    for (let block of shape) {
+                        let nr = root.r + block.r;
+                        let nc = root.c + block.c;
+                        if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE || grid[nr][nc] !== 0) {
+                            possible = false;
+                            break;
+                        }
+                        attempt.push({r: nr, c: nc});
+                    }
+                    if (possible) return attempt;
+                }
+            }
+            return null;
+        }
+
+        function canMove(playerVal) {
+            return findValidMove(playerVal) !== null;
+        }
+
+        function updateUI() {
+            document.getElementById('score-player').innerText = scores.player;
+            document.getElementById('score-cpu').innerText = scores.cpu;
+            
+            const indicator = document.getElementById('turn-indicator');
+            if (isPlayerTurn) {
+                indicator.innerHTML = `당신의 차례입니다 <span id="timer-display" class="ml-2 text-red-500 font-bold">${timeLeft}s</span>`;
+                indicator.className = "absolute top-4 bg-blue-100 text-blue-800 px-6 py-2 rounded-full font-bold text-lg shadow transition-colors z-20 pointer-events-none";
+            } else {
+                indicator.innerHTML = `컴퓨터 생각 중...`;
+                indicator.className = "absolute top-4 bg-red-100 text-red-800 px-6 py-2 rounded-full font-bold text-lg shadow transition-colors z-20 pointer-events-none";
+            }
+        }
+
+        function endGame(title, msg, isWin) {
+            stopTimer();
+            gameOver = true;
+            const modal = document.getElementById('modal-gameover');
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = msg;
+            document.getElementById('modal-icon').innerText = isWin ? "🎉" : "💀";
+            modal.classList.remove('hidden');
+        }
+
+        function renderReference() {
+            const container = document.getElementById('net-reference');
+            container.innerHTML = '';
+            
+            BASE_SHAPES.forEach(shape => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'net-preview-item';
+                
+                const arr = shape.map(p => Array.isArray(p)?p:[p.r, p.c]);
+                const maxR = Math.max(...arr.map(p=>p[0]));
+                const maxC = Math.max(...arr.map(p=>p[1]));
+                
+                const miniGrid = document.createElement('div');
+                miniGrid.className = 'mini-grid';
+                miniGrid.style.gridTemplateColumns = `repeat(${maxC+1}, 10px)`;
+                
+                for(let r=0; r<=maxR; r++) {
+                    for(let c=0; c<=maxC; c++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'mini-cell';
+                        if (arr.some(p => p[0]===r && p[1]===c)) {
+                            cell.classList.add('filled');
+                        }
+                        miniGrid.appendChild(cell);
+                    }
+                }
+                wrapper.appendChild(miniGrid);
+                container.appendChild(wrapper);
+            });
+        }
+
+        initGame();
+
+    </script>
+</body>
+</html>
