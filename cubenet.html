@@ -2,7 +2,8 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 모바일 확대 방지 및 뷰포트 최적화 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>정육면체 전개도 땅따먹기</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -12,6 +13,7 @@
             font-family: 'Noto Sans KR', sans-serif;
             background-color: #f0f9ff;
             user-select: none;
+            touch-action: manipulation; /* 터치 지연 방지 */
         }
 
         h1, h2, .font-jua {
@@ -23,10 +25,18 @@
             cursor: pointer;
             border: 1px solid #bfdbfe; 
             background-color: white;
+            /* 정사각형 비율 유지 */
+            aspect-ratio: 1 / 1;
         }
 
-        .grid-cell:hover {
-            background-color: #e0f2fe; 
+        .grid-cell:active {
+            background-color: #dbeafe;
+        }
+
+        @media (hover: hover) {
+            .grid-cell:hover {
+                background-color: #e0f2fe; 
+            }
         }
 
         /* 플레이어 점령 (Blue) */
@@ -90,55 +100,58 @@
         }
     </style>
 </head>
-<body class="h-screen flex flex-col items-center overflow-hidden">
+<body class="h-[100dvh] flex flex-col items-center overflow-hidden">
 
     <!-- Header -->
-    <header class="w-full bg-white shadow-md p-4 flex justify-between items-center z-10">
-        <h1 class="text-2xl md:text-3xl text-blue-600 font-jua">🎲 정육면체 전개도 땅따먹기</h1>
-        <div class="flex gap-4 text-sm md:text-base font-bold">
-            <div class="flex items-center gap-2">
-                <div class="w-4 h-4 bg-blue-500 rounded"></div>
+    <header class="w-full bg-white shadow-md p-3 md:p-4 flex justify-between items-center z-10 shrink-0">
+        <h1 class="text-xl md:text-3xl text-blue-600 font-jua truncate">🎲 정육면체 전개도</h1>
+        <div class="flex gap-2 md:gap-4 text-xs md:text-base font-bold shrink-0">
+            <div class="flex items-center gap-1 md:gap-2">
+                <div class="w-3 h-3 md:w-4 md:h-4 bg-blue-500 rounded"></div>
                 <span>나: <span id="score-player">0</span></span>
             </div>
-            <div class="flex items-center gap-2">
-                <div class="w-4 h-4 bg-red-500 rounded"></div>
-                <span>컴퓨터: <span id="score-cpu">0</span></span>
+            <div class="flex items-center gap-1 md:gap-2">
+                <div class="w-3 h-3 md:w-4 md:h-4 bg-red-500 rounded"></div>
+                <span>컴: <span id="score-cpu">0</span></span>
             </div>
         </div>
     </header>
 
     <!-- Main Content -->
-    <div class="flex flex-1 w-full max-w-7xl gap-4 p-4 overflow-hidden">
+    <div class="flex flex-1 w-full max-w-7xl gap-4 p-2 md:p-4 overflow-hidden flex-col md:flex-row">
         
-        <!-- Left Panel: Game Board -->
-        <div class="flex-1 flex flex-col items-center justify-center bg-white rounded-xl shadow-lg p-4 relative">
+        <!-- Game Board Panel -->
+        <div class="flex-1 flex flex-col items-center justify-center bg-white rounded-xl shadow-lg p-2 md:p-4 relative overflow-hidden">
             
             <!-- Turn Indicator -->
-            <div id="turn-indicator" class="absolute top-4 bg-blue-100 text-blue-800 px-6 py-2 rounded-full font-bold text-lg shadow transition-colors z-20 pointer-events-none">
+            <div id="turn-indicator" class="mb-2 md:absolute md:top-4 bg-blue-100 text-blue-800 px-4 py-1 md:px-6 md:py-2 rounded-full font-bold text-sm md:text-lg shadow transition-colors z-20 pointer-events-none whitespace-nowrap">
                 당신의 차례입니다 <span id="timer-display" class="ml-2 text-red-500">40s</span>
             </div>
 
-            <!-- Grid Container -->
-            <div id="grid-container" class="grid gap-1 bg-blue-300 p-1 rounded-lg shadow-inner select-none border-2 border-blue-300">
-                <!-- Grid Cells Generated via JS -->
+            <!-- Grid Container Wrapper for aspect ratio -->
+            <div class="w-full flex justify-center items-center overflow-auto" style="max-height: 100%;">
+                <!-- Grid Container: 반응형 그리드 적용 -->
+                <div id="grid-container" class="grid gap-[1px] bg-blue-300 p-1 rounded-lg shadow-inner select-none border-2 border-blue-300 w-full max-w-[500px] aspect-square">
+                    <!-- Grid Cells Generated via JS -->
+                </div>
             </div>
 
             <!-- Controls -->
-            <div class="mt-6 flex gap-4">
-                <button id="btn-confirm" onclick="confirmMove()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    땅따먹기 (0/6)
+            <div class="mt-2 md:mt-6 flex gap-2 w-full justify-center">
+                <button id="btn-confirm" onclick="confirmMove()" class="flex-1 md:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 md:py-3 px-4 md:px-8 rounded-lg md:rounded-full shadow-lg transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap" disabled>
+                    확인 (0/6)
                 </button>
-                <button onclick="resetSelection()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-full shadow transform active:scale-95 transition-all">
+                <button onclick="resetSelection()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 md:py-3 px-3 md:px-6 rounded-lg md:rounded-full shadow transform active:scale-95 transition-all text-sm md:text-base whitespace-nowrap">
                     취소
                 </button>
-                <button onclick="initGame()" class="bg-red-100 hover:bg-red-200 text-red-600 font-bold py-3 px-6 rounded-full shadow transform active:scale-95 transition-all">
-                    새 게임
+                <button onclick="initGame()" class="bg-red-100 hover:bg-red-200 text-red-600 font-bold py-2 md:py-3 px-3 md:px-6 rounded-lg md:rounded-full shadow transform active:scale-95 transition-all text-sm md:text-base whitespace-nowrap">
+                    다시
                 </button>
             </div>
         </div>
 
-        <!-- Right Panel: Reference -->
-        <div class="hidden md:flex w-64 flex-col bg-white rounded-xl shadow-lg p-4 overflow-y-auto">
+        <!-- Right Panel: Reference (Desktop: Visible, Mobile: Hidden/Optional) -->
+        <div class="hidden md:flex w-64 flex-col bg-white rounded-xl shadow-lg p-4 overflow-y-auto shrink-0">
             <h3 class="font-jua text-lg text-gray-700 mb-2 border-b pb-2">전개도 족보 (11종)</h3>
             <p class="text-xs text-gray-500 mb-4">회전하거나 뒤집어도 유효합니다.</p>
             <div id="net-reference" class="flex flex-wrap justify-center">
@@ -162,7 +175,7 @@
     <script>
         // 게임 설정
         const GRID_SIZE = 12;
-        const CELL_SIZE = 40;
+        // CELL_SIZE는 CSS Grid(1fr)로 제어되므로 JS 변수 제거
         const TIME_LIMIT = 40;
 
         let grid = []; 
@@ -336,13 +349,15 @@
 
         function renderGrid() {
             const container = document.getElementById('grid-container');
-            container.style.gridTemplateColumns = `repeat(${GRID_SIZE}, ${CELL_SIZE}px)`;
+            // CSS Grid의 repeat(12, 1fr)로 컬럼 자동 조절
+            container.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
             container.innerHTML = '';
 
             for(let r=0; r<GRID_SIZE; r++) {
                 for(let c=0; c<GRID_SIZE; c++) {
                     const cell = document.createElement('div');
-                    cell.className = `grid-cell w-[${CELL_SIZE}px] h-[${CELL_SIZE}px] flex items-center justify-center text-xs font-bold rounded-sm`;
+                    // w-full h-full 및 aspect-square로 반응형 크기 유지
+                    cell.className = `grid-cell w-full h-full flex items-center justify-center text-[10px] md:text-xs font-bold rounded-sm`;
                     cell.dataset.r = r;
                     cell.dataset.c = c;
                     
@@ -382,7 +397,7 @@
 
         function checkSelectionCount() {
             const btn = document.getElementById('btn-confirm');
-            btn.innerText = `땅따먹기 (${selectedCells.length}/6)`;
+            btn.innerText = `확인 (${selectedCells.length}/6)`; // 버튼 텍스트 짧게 수정 (모바일 대응)
             
             if (selectedCells.length === 6) {
                 btn.disabled = false;
@@ -498,10 +513,10 @@
             const indicator = document.getElementById('turn-indicator');
             if (isPlayerTurn) {
                 indicator.innerHTML = `당신의 차례입니다 <span id="timer-display" class="ml-2 text-red-500 font-bold">${timeLeft}s</span>`;
-                indicator.className = "absolute top-4 bg-blue-100 text-blue-800 px-6 py-2 rounded-full font-bold text-lg shadow transition-colors z-20 pointer-events-none";
+                indicator.className = "mb-2 md:absolute md:top-4 bg-blue-100 text-blue-800 px-4 py-1 md:px-6 md:py-2 rounded-full font-bold text-sm md:text-lg shadow transition-colors z-20 pointer-events-none whitespace-nowrap";
             } else {
                 indicator.innerHTML = `컴퓨터 생각 중...`;
-                indicator.className = "absolute top-4 bg-red-100 text-red-800 px-6 py-2 rounded-full font-bold text-lg shadow transition-colors z-20 pointer-events-none";
+                indicator.className = "mb-2 md:absolute md:top-4 bg-red-100 text-red-800 px-4 py-1 md:px-6 md:py-2 rounded-full font-bold text-sm md:text-lg shadow transition-colors z-20 pointer-events-none whitespace-nowrap";
             }
         }
 
