@@ -1,0 +1,403 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Calendar, 
+  Clock, 
+  Music, 
+  Users, 
+  FlaskConical, 
+  Monitor, 
+  ChevronLeft, 
+  CheckCircle2, 
+  XCircle,
+  AlertCircle,
+  Trash2
+} from 'lucide-react';
+
+// Firebase Imports
+import { initializeApp } from "firebase/app";
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signInWithCustomToken
+} from "firebase/auth";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  deleteDoc, 
+  doc 
+} from "firebase/firestore";
+
+// --- Configuration & Constants ---
+const ROOMS = [
+  { id: 'music', name: '음악실', icon: Music, color: 'bg-rose-100 text-rose-600', description: '피아노 및 음향 장비 구비' },
+  { id: 'auditorium', name: '강당', icon: Users, color: 'bg-blue-100 text-blue-600', description: '전교생 수용 가능, 음향 시설' },
+  { id: 'science', name: '과학실', icon: FlaskConical, color: 'bg-emerald-100 text-emerald-600', description: '실험 도구 및 안전 장비' },
+  { id: 'computer', name: '컴퓨터실', icon: Monitor, color: 'bg-violet-100 text-violet-600', description: '30대 PC, 시청각 수업 가능' },
+];
+
+const PERIODS = [
+  { id: 1, time: '09:00 - 09:50' },
+  { id: 2, time: '10:00 - 10:50' },
+  { id: 3, time: '11:00 - 11:50' },
+  { id: 4, time: '12:00 - 12:50' },
+  { id: 5, time: '13:50 - 14:40' },
+  { id: 6, time: '14:50 - 15:40' },
+  { id: 7, time: '15:50 - 16:40' },
+  { id: 8, time: '16:50 - 17:40' },
+];
+
+// --- Firebase Setup ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+export default function SchoolRoomBooking() {
+  const [user, setUser] = useState(null);
+  const [reservations, setReservations] = useState([]);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [bookingData, setBookingData] = useState({ period: null, teacher: '', purpose: '' });
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  // 1. Authentication
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Auth Error:", error);
+      }
+    };
+    initAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Data Fetching (Real-time)
+  useEffect(() => {
+    if (!user) return;
+
+    // RULE: Simple query, filter in memory
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'reservations'));
+    
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const loadedData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setReservations(loadedData);
+      },
+      (error) => {
+        console.error("Firestore Error:", error);
+        showToast("데이터를 불러오는데 실패했습니다.", "error");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Filter reservations for current view
+  const currentReservations = useMemo(() => {
+    if (!selectedRoom) return [];
+    return reservations.filter(r => 
+      r.roomId === selectedRoom.id && 
+      r.date === selectedDate
+    );
+  }, [reservations, selectedRoom, selectedDate]);
+
+  // --- Handlers ---
+
+  const handleRoomSelect = (room) => {
+    setSelectedRoom(room);
+  };
+
+  const handleDateChange = (e) => {
+    setSelectedDate(e.target.value);
+  };
+
+  const openBookingModal = (periodId) => {
+    // Check if already reserved
+    const existing = currentReservations.find(r => r.period === periodId);
+    if (existing) {
+      showToast("이미 예약된 교시입니다.", "error");
+      return;
+    }
+    setBookingData({ period: periodId, teacher: '', purpose: '' });
+    setIsModalOpen(true);
+  };
+
+  const handleBookingSubmit = async (e) => {
+    e.preventDefault();
+    if (!bookingData.teacher || !bookingData.purpose) {
+      showToast("모든 정보를 입력해주세요.", "error");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reservations'), {
+        roomId: selectedRoom.id,
+        roomName: selectedRoom.name,
+        date: selectedDate,
+        period: bookingData.period,
+        teacher: bookingData.teacher,
+        purpose: bookingData.purpose,
+        createdAt: new Date().toISOString(),
+        userId: user.uid // Store who booked it
+      });
+      setIsModalOpen(false);
+      showToast(`${selectedRoom.name} ${bookingData.period}교시 예약 완료!`);
+    } catch (error) {
+      console.error("Booking Error:", error);
+      showToast("예약 중 오류가 발생했습니다.", "error");
+    }
+  };
+
+  const handleCancelReservation = async (reservationId) => {
+    if (!window.confirm("정말로 이 예약을 취소하시겠습니까?")) return;
+    
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reservations', reservationId));
+      showToast("예약이 취소되었습니다.");
+    } catch (error) {
+      showToast("취소 중 오류가 발생했습니다.", "error");
+    }
+  };
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
+
+  // --- Render Helpers ---
+
+  const getStatusColor = (periodId) => {
+    const isReserved = currentReservations.some(r => r.period === periodId);
+    return isReserved ? 'bg-red-100 border-red-200' : 'bg-white border-gray-200 hover:border-blue-400 hover:shadow-md cursor-pointer';
+  };
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">시스템 접속 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="bg-blue-600 p-2 rounded-lg">
+              <Clock className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-800">학교 특별실 예약 시스템</h1>
+          </div>
+          <div className="text-sm text-gray-500">
+            {selectedDate} ({new Date(selectedDate).toLocaleDateString('ko-KR', { weekday: 'long' })})
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        {/* Toast Notification */}
+        {toast.show && (
+          <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 transform transition-all duration-300 z-50 ${
+            toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+          }`}>
+            {toast.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
+            {toast.message}
+          </div>
+        )}
+
+        {/* View Switching */}
+        {!selectedRoom ? (
+          // Room Selection View
+          <div className="space-y-6">
+            <div className="text-center py-8">
+              <h2 className="text-2xl font-bold mb-2">어떤 교실을 사용하시나요?</h2>
+              <p className="text-gray-500">예약하려는 특별실을 선택해주세요.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {ROOMS.map((room) => {
+                const Icon = room.icon;
+                return (
+                  <button
+                    key={room.id}
+                    onClick={() => handleRoomSelect(room)}
+                    className="flex items-center p-6 bg-white rounded-xl shadow-sm border border-gray-100 transition-all hover:shadow-md hover:-translate-y-1 text-left"
+                  >
+                    <div className={`p-4 rounded-full mr-4 ${room.color}`}>
+                      <Icon size={32} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{room.name}</h3>
+                      <p className="text-sm text-gray-500 mt-1">{room.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          // Booking Detail View
+          <div className="space-y-6">
+            <button 
+              onClick={() => setSelectedRoom(null)}
+              className="flex items-center text-gray-500 hover:text-blue-600 transition-colors mb-4"
+            >
+              <ChevronLeft size={20} className="mr-1" />
+              특별실 목록으로 돌아가기
+            </button>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-xl ${selectedRoom.color}`}>
+                    <selectedRoom.icon size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">{selectedRoom.name} 예약 현황</h2>
+                    <p className="text-gray-500 text-sm">원하는 날짜와 교시를 선택하세요.</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center bg-gray-50 p-2 rounded-lg border border-gray-200">
+                  <Calendar size={18} className="text-gray-500 mr-2" />
+                  <input 
+                    type="date" 
+                    value={selectedDate}
+                    onChange={handleDateChange}
+                    className="bg-transparent border-none focus:ring-0 text-sm font-medium text-gray-700"
+                  />
+                </div>
+              </div>
+
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {PERIODS.map((period) => {
+                    const reservation = currentReservations.find(r => r.period === period.id);
+                    const isBooked = !!reservation;
+
+                    return (
+                      <div 
+                        key={period.id}
+                        onClick={() => !isBooked && openBookingModal(period.id)}
+                        className={`relative p-4 rounded-xl border transition-all ${getStatusColor(period.id)}`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${isBooked ? 'bg-red-200 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {period.id}
+                          </span>
+                          <span className="text-xs text-gray-400 font-medium">{period.time}</span>
+                        </div>
+                        
+                        {isBooked ? (
+                          <div className="mt-2">
+                            <p className="font-bold text-gray-800 text-sm">{reservation.teacher} 선생님</p>
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-1">{reservation.purpose}</p>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelReservation(reservation.id);
+                              }}
+                              className="absolute top-4 right-4 text-gray-400 hover:text-red-500"
+                              title="예약 취소"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-4 flex items-center justify-center text-gray-400">
+                            <span className="text-sm">예약 가능</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Booking Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold">
+                {selectedDate} / {bookingData.period}교시 예약
+              </h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleBookingSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">예약자 성명 (선생님)</label>
+                <input
+                  type="text"
+                  placeholder="예: 김철수"
+                  value={bookingData.teacher}
+                  onChange={(e) => setBookingData({...bookingData, teacher: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">사용 목적 (수업 내용)</label>
+                <input
+                  type="text"
+                  placeholder="예: 3학년 2반 음악 수행평가"
+                  value={bookingData.purpose}
+                  onChange={(e) => setBookingData({...bookingData, purpose: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm"
+                >
+                  예약하기
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
